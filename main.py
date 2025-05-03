@@ -103,6 +103,8 @@ def prediccion_partido(y_predict):
         home_goals = 1.5
     elif home_goals > 0.5:
         home_goals = 0.5
+    elif home_goals < 0.5:
+        home_goals = 0
 
     if away_goals > 4.5:
         away_goals = 4.5
@@ -114,6 +116,8 @@ def prediccion_partido(y_predict):
         away_goals = 1.5
     elif away_goals > 0.5:
         away_goals = 0.5
+    elif away_goals < 0.5:
+        away_goals = 0
 
     total_goals = home_goals + away_goals
     if home_goals >= 0.5:
@@ -134,7 +138,7 @@ def prediccion_partido(y_predict):
         total_goals = 2.5
     elif total_goals == 1:
         total_goals = 1.5
-    elif home_goals <= 0.5 and away_goals <= 0.5:
+    elif home_goals < 0.5 and away_goals < 0.5:
         total_goals = 0
     if total_goals == 0:
         st.write(f"**Predicted Total goals: UNDER** {0.50}")
