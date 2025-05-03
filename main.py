@@ -4,150 +4,107 @@ import pandas as pd
 import numpy as np
 import pickle
 
-model_file = open("model_pl.pkl", "rb")
-model = pickle.loads(model_file.read())
-model_file.close()
+# Load model
+with open("model_pl.pkl", "rb") as model_file:
+    model = pickle.load(model_file)
 
+# Load and clean data
 datos = pd.read_csv("England CSV.csv")
-datos["HomeTeam"] = datos["HomeTeam"].apply(
-    lambda x: "Brighton & Hove Albion" if x == "Brighton" else x
+datos["HomeTeam"] = datos["HomeTeam"].replace(
+    {"Brighton": "Brighton & Hove Albion", "Ipswich": "Ipswich Town"}
 )
-datos["AwayTeam"] = datos["AwayTeam"].apply(
-    lambda x: "Brighton & Hove Albion" if x == "Brighton" else x
+datos["AwayTeam"] = datos["AwayTeam"].replace(
+    {"Brighton": "Brighton & Hove Albion", "Ipswich": "Ipswich Town"}
 )
 
-datos["HomeTeam"] = datos["HomeTeam"].apply(
-    lambda x: "Ipswich Town" if x == "Ipswich" else x
-)
-datos["AwayTeam"] = datos["AwayTeam"].apply(
-    lambda x: "Ipswich Town" if x == "Ipswich" else x
-)
-sim = datos.drop(
-    columns=[
-        "Referee",
-        "H Fouls",
-        "FT Result",
-        "A Fouls",
-        "League",
-        "Display_Order",
-        "HTH Goals",
-        "HTA Goals",
-        "HT Result",
-    ]
-)
+drop_cols = [
+    "Referee",
+    "H Fouls",
+    "FT Result",
+    "A Fouls",
+    "League",
+    "Display_Order",
+    "HTH Goals",
+    "HTA Goals",
+    "HT Result",
+]
+sim = datos.drop(columns=drop_cols)
+test = datos.drop(columns=drop_cols)
+
+# Filter by seasons
 seasons_to_keep = ["2022/23", "2023/24", "2024/25"]
 seasons_to_test = ["2024/25"]
 sim = sim[sim["Season"].isin(seasons_to_keep)]
-test = datos.drop(
-    columns=[
-        "Referee",
-        "H Fouls",
-        "FT Result",
-        "A Fouls",
-        "League",
-        "Display_Order",
-        "HTH Goals",
-        "HTA Goals",
-        "HT Result",
-    ]
-)
 test = test[test["Season"].isin(seasons_to_test)]
 
+# Sidebar selections
+st.sidebar.title("Match Selection")
+home_team = st.sidebar.selectbox("Select Home Team", sorted(test["HomeTeam"].unique()))
+away_team = st.sidebar.selectbox("Select Away Team", sorted(test["AwayTeam"].unique()))
 
+
+# Feature generation based on historical averages
 def media_datos(Home_Team, Away_Team):
     teams_data = sim[(sim["HomeTeam"] == Home_Team) & (sim["AwayTeam"] == Away_Team)]
-    mean_H_shots = teams_data["H Shots"].mean()
-    mean_A_shots = teams_data["A Shots"].mean()
-    mean_H_SOT = teams_data["H SOT"].mean()
-    mean_A_SOT = teams_data["A SOT"].mean()
-    mean_H_corners = teams_data["H Corners"].mean()
-    mean_A_corners = teams_data["A Corners"].mean()
-    mean_H_yellow = teams_data["H Yellow"].mean()
-    mean_A_yellow = teams_data["A Yellow"].mean()
-    mean_H_red = teams_data["H Red"].mean()
-    mean_A_red = teams_data["A Red"].mean()
     return pd.DataFrame(
         {
-            "H Shots": [mean_H_shots],
-            "A Shots": [mean_A_shots],
-            "H SOT": [mean_H_SOT],
-            "A SOT": [mean_A_SOT],
-            "H Corners": [mean_H_corners],
-            "A Corners": [mean_A_corners],
-            "H Yellow": [mean_H_yellow],
-            "A Yellow": [mean_A_yellow],
-            "H Red": [mean_H_red],
-            "A Red": [mean_A_red],
+            "H Shots": [teams_data["H Shots"].mean()],
+            "A Shots": [teams_data["A Shots"].mean()],
+            "H SOT": [teams_data["H SOT"].mean()],
+            "A SOT": [teams_data["A SOT"].mean()],
+            "H Corners": [teams_data["H Corners"].mean()],
+            "A Corners": [teams_data["A Corners"].mean()],
+            "H Yellow": [teams_data["H Yellow"].mean()],
+            "A Yellow": [teams_data["A Yellow"].mean()],
+            "H Red": [teams_data["H Red"].mean()],
+            "A Red": [teams_data["A Red"].mean()],
         }
     )
 
 
-home_team = st.selectbox("Select your home team:", test["HomeTeam"].unique())
-away_team = st.selectbox("Select your away team:", test["AwayTeam"].unique())
+# Prediction and classification
+def clasificar_goles(goals):
+    if goals < 0.5:
+        return "UNDER 0.5"
+    elif goals < 1.5:
+        return "UNDER 1.5"
+    elif goals < 2.5:
+        return "UNDER 2.5"
+    elif goals < 3.5:
+        return "OVER 2.5"
+    else:
+        return "OVER 3.5"
 
-Simulacion = media_datos(home_team, away_team)
-y_predict = model.predict(np.log1p(Simulacion))
 
+def prediccion_partido(home_team, away_team):
+    Simulacion = media_datos(home_team, away_team)
 
-def prediccion_partido(y_predict):
+    if Simulacion.isnull().values.any():
+        st.error("Insufficient data for this match combination.")
+        return
+
+    y_predict = model.predict(np.log1p(Simulacion))
     home_goals = math.expm1(y_predict[0][0])
     away_goals = math.expm1(y_predict[0][1])
-
-    if home_goals > 4.5:
-        home_goals = 4.5
-    elif home_goals > 3.5:
-        home_goals = 3.5
-    elif home_goals > 2.5:
-        home_goals = 2.5
-    elif home_goals > 1.5:
-        home_goals = 1.5
-    elif home_goals > 0.5:
-        home_goals = 0.5
-    elif home_goals < 0.5:
-        home_goals = 0
-
-    if away_goals > 4.5:
-        away_goals = 4.5
-    elif away_goals > 3.5:
-        away_goals = 3.5
-    elif away_goals > 2.5:
-        away_goals = 2.5
-    elif away_goals > 1.5:
-        away_goals = 1.5
-    elif away_goals > 0.5:
-        away_goals = 0.5
-    elif away_goals < 0.5:
-        away_goals = 0
-
     total_goals = home_goals + away_goals
-    if home_goals >= 0.5:
-        st.write(f"**Predicted goals Home team : OVER** {home_goals:.2f}")
-    else:
-        st.write(f"**Predicted goals Home team : UNDER** {0.50}")
-    if away_goals >= 0.5:
 
-        st.write(f"**Predicted goals Away team: OVER** {away_goals:.2f}")
-    else:
-        st.write(f"**Predicted goals Away team: UNDER** {0.50}")
+    st.subheader("Predicted Goals")
+    st.markdown(
+        f"**Home team ({home_team})**: {home_goals:.2f} — *{clasificar_goles(home_goals)}*"
+    )
+    st.markdown(
+        f"**Away team ({away_team})**: {away_goals:.2f} — *{clasificar_goles(away_goals)}*"
+    )
+    st.markdown(
+        f"**Total goals**: {total_goals:.2f} — *{clasificar_goles(total_goals)}*"
+    )
 
-    if total_goals == 4:
-        total_goals = 4.5
-    elif total_goals == 3:
-        total_goals = 3.5
-    elif total_goals == 2:
-        total_goals = 2.5
-    elif total_goals == 1:
-        total_goals = 1.5
-    elif home_goals < 0.5 and away_goals < 0.5:
-        total_goals = 0
-    if total_goals == 0:
-        st.write(f"**Predicted Total goals: UNDER** {0.50}")
-    else:
-        st.write(f"**Predicted Total goals: OVER** {total_goals:.2f}")
-    st.write("### Average Match Data:")
+    st.subheader("Average Match Data")
     st.dataframe(Simulacion)
 
-    st.write("DISCLAIMER: Not full data for team Ipswich Town.")
+    if "Ipswich Town" in [home_team, away_team]:
+        st.warning("DISCLAIMER: Not full data available for Ipswich Town.")
 
 
-prediccion_partido(y_predict)
+# Run prediction
+prediccion_partido(home_team, away_team)
